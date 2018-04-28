@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import concurrent.futures 
+import multiprocessing as mp
+## 尝试使用多线程计算  ThreadPoolExecutor
 
 def findIdx(doc_name):
     ## 传入实验数据文件名 返回当前实验标号
@@ -38,6 +41,29 @@ def calLine(points):
     b = np.array([p[1],p[3]])
     params = np.linalg.solve(a,b)
     return params
+
+def pickPoints(array):
+    ## 传入pd.series数组 返回相对平滑阶段的 数据编号
+    a1 = array[:-1]
+    a2 = array[1:]
+    a3 = a1 - a2 ## 相邻两点纵坐标之差 即斜率大小
+
+    slop_max = a3.mean() + 0.5*a3.std() # 设定为斜率的最大值
+    slop_min = a3.mean() - 0.5*a3.std() # 设定为斜率的最小值
+
+    tag_max = (a3<slop_max).argmin() # 想要的最后一个数据
+    tag_min = (a3<slop_min).argmin() # 想要的第一个数据
+    return tag_min+1,tag_max+1
+
+def calPeriodValue(array, period=8):
+    period_num = len(array) // period 
+    values = [array[i*(period-1):(i+1)*(period-1)].mean() for i in range(period_num)]
+    return np.array(values)
+
+def calPickValue(ptc_array,target_array):
+    ## 传入颗粒数量序列 和 目标数列，根据颗粒数量挑出平稳阶段 计算目标序列的均值
+    pik = pickPoints(ptc_array)
+    return ptc_array[pik[0]:pik[1]].mean(), target_array[pik[0]:pik[1]].mean()
 
 def calStratification(ptc_bed,z_label):
     #传入要计算分层系数的 料层颗粒信息 和 料层厚度
@@ -96,19 +122,117 @@ def calStratification(ptc_bed,z_label):
     # return np.array([r_old,r_new,r_new_norm])
     return stra
 
-def Penetration(exp_obj,hz,interval):
+def calAllTimeStra(exp_obj):
+    # 传入 实验数据  和  该实验所使用的 振动频率
+    time = exp_obj.time_ls
+    len_time = len(time)
+    stra = np.zeros([len_time,1])
+    ptc_bed_num = np.zeros([len_time,1])
+
+    for ti in range(len_time):
+        bed,z_labels = exp_obj.getBedPtc(ti)
+        print('the number of particles in bed:', bed.shape[0])
+
+        ptc_bed_num[ti] = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
+        stra[ti] = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+
+    # df_all = pd.DataFrame(np.hstack([r,ptc_bed_num]),columns=['R_z_diam','ptc_bed_num'])
+
+    label = ptc_bed_num.nonzero() ## 相关系数数组中 的 非零项  包括 np.nan
+    ptc_bed_num = ptc_bed_num[label]
+    stra = stra[label]
+
+    # ptc_bed_num_period,l = getPeriod(hz,ptc_bed_num,interval) 
+    # stra_period = getPeriod(hz,r,interval)
+    stra_period = calPeriodValue(stra)
+    ptc_bed_num_period = calPeriodValue(ptc_bed_num)
+    # print(ptc_bed_num_period.shape,'\n',r_period.shape)
+
+    ptc_,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+
+    # df_period = pd.DataFrame(np.hstack([stra_period.reshape(-1,1),ptc_bed_num_period.reshape(-1,1)]),
+    #     columns=['stra_period','ptc_num_period'])  ## 必须保证 1 列数据
+    
+    # df = pd.DataFrame(np.hstack([stra.reshape(-1,1),ptc_bed_num.reshape(-1,1)]),
+    #     columns=['stras','ptc_num'])  ## 必须保证 1 列数据
+    return ptc_,stra_
+    # return df_period
+    # return df_all,r,ptc_bed_num
+
+def func(params):
+
+    exp_obj = params[0]
+    ti = params[1]
+    bed,z_labels = exp_obj.getBedPtc(ti)
+    # print('the number of particles in bed:', bed.shape[0])
+    delta_z = z_labels[1] - z_labels[0]
+
+    ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
+    stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+    poro = Porosity(bed,delta_z,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+
+    # return ptc_bed_num,stra,poro
+    ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
+    return ti,ptc_bed_num,stra,poro
+
+def calFeatures(exp_obj):
+    ## 尝试使用并行计算 同时计算分层和松散
+    idx_ = exp_obj.idx
+    time = exp_obj.time_ls
+    len_time = len(time)
+    stra = np.zeros([len_time,1])
+    poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
+    ptc_bed_num = np.zeros([len_time,1])
+
+    pool = mp.Pool(8)
+    params = [[exp_obj,ti] for ti in range(len_time)]  ##map传入的参数必须是可迭代的，所以把exp_obj与ti组合成可迭代形式
+    res = pool.map(func,params)
+    print('multicore is done!!')
+
+    # print(res,'\n',len(res))
+    np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros']) ## 各个列名称为返回的数据
+    pd_res = pd_res.sort_values(by='ti')
+    # ptc_bed_num = pd_res.ptc_bed_num
+    print(pd_res.head())
+
+    label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
+    ptc_bed_num = pd_res.ptc_bed_num[label]
+    stra = pd_res.stra[label]
+    poros = pd_res.poros[label]
+
+    poros_period = calPeriodValue(poros)
+    stra_period = calPeriodValue(stra)
+    pene_period = Penetration(exp_obj)
+    ptc_bed_num_period = calPeriodValue(ptc_bed_num)
+
+    ptc_,pene_ = calPickValue(ptc_bed_num_period,pene_period)
+    ptc_,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+    ptc_,poro_ = calPickValue(ptc_bed_num_period,poros_period)
+
+    # return idx_,ptc_,pene_
+    return idx_,ptc_,stra_,poro_,pene_
+
+def periodLastLabel(array, period=8):
+    period_num = len(array) // period 
+    labels = [(i+1)*period for i in range(period_num)]
+    return np.array(labels)
+
+def Penetration(exp_obj):
     ## 后一个时刻  主筛区域 筛下新增颗粒  与 前一个时刻筛上颗粒 之比
     ## 还需要导入 后一时刻的 筛网位置坐标
     ## 还是得用 前后两个周期 进行比较  前后两个时刻间隔太小 会出现后一个时刻筛下颗粒数目减小的现象
     ## 传入目标实验的频率值  计算每个周期的最后一个时刻  比对这些时刻的颗粒
 
     time = exp_obj.time_ls
-    period_values, labels = getPeriod(hz,time,interval)  # 以平动周期对时间序列进行分割 返回最后一个时刻的标号
+    labels = periodLastLabel(time)  # 以平动周期对时间序列进行分割 返回最后一个时刻的标号
+    # print(labels)
     x_max = exp_obj.main_scn_area
-    penetration_ratio = []
-    num_new_ptc = []
-    num_tim1_up = []
+    penetration_ratio = np.zeros([len(labels),1])
+    # num_new_ptc = []
+    # num_tim1_up = []
 
+    i_ = 0
     for ti_1, ti_2 in zip(labels[0:-1],labels[1:]):  # 用前后两个周期的 最后一个时刻计算
         ptc_tim1_up = exp_obj.getUpperPtc(ti_1)  # 仅仅主筛区域以上颗粒
         ptc_tim1_und = exp_obj.getUnderPtc(ti_1,x_max)  # 仅仅主筛区域以下颗粒
@@ -117,22 +241,24 @@ def Penetration(exp_obj,hz,interval):
         ptc_id_tim1_und = set(ptc_tim1_und.pid)
         ptc_id_tim2_und = set(ptc_tim2_und.pid)
         diff_tim2_tim1 = findDiff(ptc_id_tim1_und,ptc_id_tim2_und)  # 筛下新增的颗粒
-        print('length of difference between tim1 and tim2:',len(diff_tim2_tim1))
+        # print('length of difference between tim1 and tim2:',len(diff_tim2_tim1))
 
         ptc_num_tim1_up = ptc_tim1_up.shape[0]
-        print(ptc_num_tim1_up)
-        if ptc_num_tim1_up > 2: 
-            num_new_ptc.append(len(diff_tim2_tim1))
-            num_tim1_up.append(ptc_num_tim1_up)
-            penetration_ratio.append(len(diff_tim2_tim1) / ptc_num_tim1_up)
-        else:
-            break  # 如果筛上颗粒数量很少时 则跳出循环
+        # print(ptc_num_tim1_up)
+        i_ += 1
+        if ptc_num_tim1_up > 0: 
+            # num_new_ptc.append(len(diff_tim2_tim1))
+            # num_tim1_up.append(ptc_num_tim1_up)
+            penetration_ratio[i_] = (len(diff_tim2_tim1) / ptc_num_tim1_up)
+        # else:
+        #     penetration_ratio.append(np.nan)
+        #     break  # 如果筛上颗粒数量很少时 则跳出循环
 
         # diff_tim2_sub_tim1 = ptc_id_tim2_und.difference(ptc_id_tim1_und);print('len of tim2 minus tim1:',len(diff_tim2_sub_tim1))
 
-    df = {'penetration_ratio': penetration_ratio,'num_new_ptc': num_new_ptc, 'num_tim1_up': num_tim1_up}
-    df = pd.DataFrame(df)
-    return df
+    # df = {'penetration_ratio': penetration_ratio,'num_new_ptc': num_new_ptc, 'num_tim1_up': num_tim1_up}
+    # df = pd.DataFrame(df)
+    return penetration_ratio
 
 def findDiff(array1,array2):
     ## 输入两个数组np.array  返回 两者交集以外的 数字
@@ -160,45 +286,6 @@ def getPeriod(freq,array,interval):
     #     print('*****')
     # plt.show()
     return mean_period, period_last_label
-
-def calPeriodValue(array, period=8):
-    period_num = len(array) // period 
-    values = [array[i*(period-1):(i+1)*(period-1)].mean() for i in range(period_num)]
-    return np.array(values)
-
-def calAllTimeStra(exp_obj):
-    # 传入 实验数据  和  该实验所使用的 振动频率
-    time = exp_obj.time_ls
-    len_time = len(time)
-    stra = np.zeros([len_time,1])
-    ptc_bed_num = np.zeros([len_time,1])
-
-    for ti in range(len_time):
-        bed,z_labels = exp_obj.getBedPtc(ti)
-        print('the number of particles in bed:', bed.shape[0])
-
-        ptc_bed_num[ti] = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
-        stra[ti] = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-
-    # df_all = pd.DataFrame(np.hstack([r,ptc_bed_num]),columns=['R_z_diam','ptc_bed_num'])
-
-    label = ptc_bed_num.nonzero() ## 相关系数数组中 的 非零项  包括 np.nan
-    ptc_bed_num = ptc_bed_num[label]
-    stra = stra[label]
-
-    # ptc_bed_num_period,l = getPeriod(hz,ptc_bed_num,interval) 
-    # stra_period = getPeriod(hz,r,interval)
-    stra_period = calPeriodValue(stra)
-    ptc_bed_num_period = calPeriodValue(ptc_bed_num)
-    # print(ptc_bed_num_period.shape,'\n',r_period.shape)
-
-    df_period = pd.DataFrame(np.hstack([stra_period.reshape(-1,1),ptc_bed_num_period.reshape(-1,1)]),
-        columns=['stra_period','ptc_num_period'])  ## 必须保证 1 列数据
-    
-    # df = pd.DataFrame(np.hstack([stra.reshape(-1,1),ptc_bed_num.reshape(-1,1)]),
-    #     columns=['stras','ptc_num'])  ## 必须保证 1 列数据
-    return df_period
-    # return df_all,r,ptc_bed_num
 
 def Porosity(ptc_bed,delta_z,main_scn_length):
     ## 主筛区域 料层内 所有颗粒投影到 x轴上 两两之间 距离的均值 与 主筛区域长度 之比
@@ -233,7 +320,7 @@ def Porosity(ptc_bed,delta_z,main_scn_length):
       
     # print(mat_dist[0:5,0:5])
     num_ele_triangle_mat_dist = ((mat_dist.shape[0]*mat_dist.shape[1] - mat_dist.shape[0])) ## 距离矩阵的上三角\下三角的元素个数
-    dist_mean = mat_dist.sum() / num_ele_triangle_mat_dist
+    dist_mean = mat_dist.sum() / round(num_ele_triangle_mat_dist,3)
     # poro = dist_mean / main_scn_length  # 使用x轴方向上 颗粒之间的距离均值 与 主筛长 之比 得出：松散程度与综合筛分效率负相关
     poro = dist_mean / delta_z  ## 尝试使用 z轴方向上，颗粒之间的距离均值 与 料层厚度之比！
     # print(dist_mean,main_scn_length)

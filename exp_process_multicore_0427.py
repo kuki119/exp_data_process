@@ -1,5 +1,7 @@
 #### 将原始的大程序拆分######
 ##在导数据阶段完成采样  处理数据阶段直接计算！！
+## 尝试在主程序中使用多线程计算 节省读取数据的时间
+## 在计算特征量时使用多进程计算 发挥多核优势
 
 import csv
 import time
@@ -7,14 +9,18 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+# import concurrent.futures
+import multiprocessing as mp
+import threading as td 
 import seaborn as sns
+from queue import Queue
 
-from otherFunc_0425 import *
+# from otherFunc_0426 import *
+from otherFunc_multicore_0427 import *
 
 class DataProcess(object):
 
-    def __init__(self,file_path,doc_name,interval=8):
+    def __init__(self,file_path,doc_name):
         # 传入文件的 所处路径 和 文件名
 
         self.idx = findIdx(doc_name)
@@ -24,11 +30,11 @@ class DataProcess(object):
         self.main_scn_length = self.getMainScnAreaLen()
         # print('the main screen area is: <%f'%self.main_scn_area)
         # print('the main screen length is: %f'%self.main_scn_length)
-        # self.scn_len = self.getScreenLen()
+        self.scn_len = self.getScreenLen()
         # self.x_bod = self.getXBod() ##入料柱位置
-        # self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
+        self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
-        # self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
+        self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
         # self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
 
         # print('the screening end time index:',self.end_time)
@@ -409,121 +415,84 @@ class DataProcess(object):
         diam = diam*1000 #将米 转成 毫米
         return diam
 
+def parallel(doc,q):
 
-
-# def main():
-
-path = 'E:\\data_1'
-# path = 'K:\\shiyan-changshi\\1\\data_1'
-docs = os.listdir(path)
-# hz = [16,18,20,22,24,20,20,20,20]
-print('有%f个文件'%len(docs))
-stra = []
-poro = []
-for doc in docs:
+    path = 'E:\\data_1'
     exp = DataProcess(path,doc)
-    print(exp)
-    # stra_ptc_num = calAllTimeStra(exp)
-    # stra.append(stra_ptc_num) 
-    # stra_ptc_num.to_excel(doc+'.xlsx')
-    poro_ptc_num = calAllTimePoro(exp)
-    poro.append(poro_ptc_num) 
-    poro_ptc_num.to_excel(doc+'.xlsx')
+    # idx_ = exp.idx
+    # print(exp)
+    # ptc_,stra_,poro_,pene_ = calFeatures(exp)
+    # ptc_ = calFeatures(exp,q)
+    # idx_,ptc_,stra_,poro_,pene_ = calFeatures(exp)
+    idx_,ptc_,pene_ = calFeatures(exp)
+
+    # q.put(idx_,ptc_,stra_,poro_,pene_)
+    q.put(idx_,ptc_)
+
+def main():
+
+    path1 = 'E:\\experiments_wang\\lang\\data_1'
+    path2 = 'E:\\experiments_wang\\lang\\data_4'
+    path3 = 'E:\\experiments_wang\\lang\\data_8'
+    # path = 'L:\\shiyan-changshi\\1\\data_1'
+    for lb, path in enumerate([path1,path2,path3]):
+
+        if lb == 2:
+            docs = os.listdir(path)
+            # hz = [16,18,20,22,24,20,20,20,20]
+            print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
+            # q = Queue()
+            dic = dict(idx=[],main_scn_ratio=[],ptc_num=[],stra=[],poro=[],pene=[],eff=[],unit_eff=[])
+            
+            # ##使用多线程 
+            # batch = 2 ##指定一次计算几个实验
+            # # for j in range(int(len(docs))//batch):
+            # for i in range(1): #先计算前4个文件 创建4个线程 
+            #     t = td.Thread(target=parallel, args=(docs[i],q))
+            #     t.start()
+            # for _ in range(1):
+            #     t.join()
+
+            # for _ in range(1):
+            #     res = q.get()
+            #     # dic['idx'].append(res[0])
+            #     # dic['ptc_num'].append(res[1])
+            #     # dic['stra'].append(res[2])
+            #     # dic['poro'].append(res[3])
+            #     # dic['pene'].append(res[4])
+            #     print(res,'>>>')
+
+            ## 不使用多线程
+            for doc in docs:
+            # doc = docs[0]
+                exp = DataProcess(path,doc)
+                print(exp)
+                main_scn_ratio = exp.main_scn_length / exp.scn_len
+                eff = exp.scr_eff
+                unit_eff = exp.scr_eff / exp.time_ls[exp.end_time]
+                
+                idx_,ptc_,stra_,poro_,pene_ = calFeatures(exp)
+                
+                dic['idx'].append(idx_)
+                dic['main_scn_ratio'].append(main_scn_ratio)
+                dic['ptc_num'].append(ptc_)
+                dic['stra'].append(stra_)
+                dic['poro'].append(poro_)
+                dic['pene'].append(pene_)
+                dic['eff'].append(eff)
+                dic['unit_eff'].append(unit_eff)
+
+                # print(dic)
+
+            df = pd.DataFrame(dic)
+            df.to_excel('Features_0428_'+str(lb)+'.xlsx')
+
+        # return df
+
+if __name__ == '__main__':
+    main()
+    # main()
 
 
-# ## 导出9组数据的主筛长 与 主筛长比; 研究料层厚度 与 筛分效率之间关系
-# main_scn_lens = []  # 主筛长
-# # main_scn_ratio = [] # 主筛长 与 全部筛长的比值
-# # main_scn_time = []  # 主筛区域 筛分时长
-# # whole_scn_time = [] # 总体筛分时长
-# eff = []            # 综合筛分效率
-# unit_eff = []       # 单位时间筛分效率
-# exp_id = []         # 实验标号
-# for doc in docs:
-#     exp = DataProcess(path,doc)
-    
-#     main_scn_lens.append(exp.main_scn_length)
-#     # main_scn_ratio.append(exp.main_scn_length/exp.scn_len)
-#     # main_scn_time.append(exp.main_scn_end_tim)
-#     # whole_scn_time.append(exp.end_time)
-#     exp_id.append(int(doc[4]))
-#     eff.append(exp.scr_eff)
-#     unit_eff.append(exp.scr_eff/exp.time_ls[exp.end_time])
-
-# df = {  'exp_id':exp_id,
-#         'main_scn_length':main_scn_lens,
-#         'main_scn_ratio':main_scn_ratio,
-#         'main_scn_time':main_scn_time,
-#         'whole_scn_time':whole_scn_time,
-#         'compre_eff':eff,
-#         'unit_eff':unit_eff
-#         }
-# df = pd.DataFrame(df)
-# df.to_excel('main_scn_length.xlsx')
-####################
-# eff_dic = dict(eff_id=[],eff_tot=[],eff_unit_time=[],spend_time=[])
-# for doc_num,doc in enumerate(docs):
-#     # if doc_num in np.arange(0,11):
-#     # if doc_num in np.arange(11,22):
-#     if doc_num in [1,2]:  ## 还剩第48实验没有算
-#         exp = DataProcess(path, doc)
-#         exp_labl = findIdx(doc)  #找到实验号 从而匹配 使用的频率值
-#         print('file:',doc)
-        
-#         eff_dic['eff_id'].append(exp_labl)
-#         eff_dic['eff_tot'].append(exp.scr_eff)
-#         unit_eff = exp.scr_eff/exp.time_ls[exp.end_time]
-#         eff_dic['eff_unit_time'].append(unit_eff)
-#         eff_dic['spend_time'].append(exp.time_ls[exp.end_time])
-
-# # name = 'sml_ptc_exp_' + str(exp_labl+1) + '_' + str(exp.scr_eff) + '.xlsx'
-# # name = 'eff_0423_1.xlsx'
-# # name = 'eff_0423_2.xlsx'
-# name = 'eff_0424_48.xlsx'
-# df = pd.DataFrame(eff_dic)
-# # df.to_excel(name,index=False)
 
 
-# # exp = DataProcess('.\\', 'exp_1.csv')  # 试验使用数据 0.01s间隔 数据量少
-# # bed = exp.getBedPtc(80)
-# # poro = Porosity(bed,exp.main_scn_length);print(poro)
-# # poro_period = calAllTimePoro(exp,20,interval=0.01)
-    
-# # # df_all,df_period = calAllTimeStra(exp,20)
-# # # df_all,df_period = calAllTimeStra(exp,16)
-
-    
-#     # penetr = Penetration(exp,hz[exp_labl],interval=0.001)
-#     # stratif = calAllTimeStra(exp,hz[exp_labl],interval=0.001)
-    
-
-    
-    # penetr.to_excel(name,index=False)
-    # stratif.to_excel(name,index=False)
-    
-    
-
-    # print(df_all,ptc_bed_num_period,r_period)
-    # exp.getUpperPtc(80)
-
-    # penetration(exp,80,81)
-    # # r = np.array([1,2,3], dtype=np.float32)
-    # r = []
-
-    # len_time = len(exp.time_ls)
-    # for i in range(len_time):
-    #     bed = exp.getBedPtc(i)
-    #     print('the number of particles in bed:', bed.shape[0])
-    #     r.append(calStratification(bed))
-    #     # r = np.vstack([r, calStratification(bed)])
-
-    # # a = np.array(r)
-    # # df_r = pd.DataFrame(r,columns=['old', 'new','new_norm'])
-
-    # np.save('calculation_stratification',r)
-    # # df_r.plot()
-    # plt.plot(r)
-    # plt.show()
-
-# if __name__ == '__main__':
-#     main()
