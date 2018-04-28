@@ -9,14 +9,12 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-# import concurrent.futures
 import multiprocessing as mp
 import threading as td 
 import seaborn as sns
 from queue import Queue
 
-# from otherFunc_0426 import *
-from otherFunc_multicore_0427 import *
+from otherFunc_multicore import *
 
 class DataProcess(object):
 
