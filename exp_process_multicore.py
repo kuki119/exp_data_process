@@ -35,7 +35,7 @@ class DataProcess(object):
         self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
         self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
-        # self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
+        self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
 
         # print('the screening end time index:',self.end_time)
 
@@ -150,8 +150,7 @@ class DataProcess(object):
             scn_tim[i] = scn[i][0]
 
         time_ls = np.array(time_ls,dtype='float32')
-
-
+        print('Import data has done!!')
         # return data,col1
         return ptc,scn_tim,time_ls,unit
 
@@ -213,48 +212,27 @@ class DataProcess(object):
     def getEndTime(self):
         #计算筛分结束时刻  1、以筛面上颗粒数量减少率或最大颗粒数量的10%来定；2、以筛分效率稳定时刻来定
         tim_len = len(self.time_ls)
-        num_ptc = np.ones(tim_len) * 1000
-        for ti in range(int(tim_len/2),tim_len):
-        #统计某一时刻  筛面上的颗粒数量 num_ptc
-            # ti = 0 #指定时刻
-            kd = self.calLine(self.scn_tim[ti])
-            ptc = self.ptc_tim[ti]
-            bool_up = (ptc.z - (kd[0]*ptc.x + kd[1]))>0
-            num_ptc[ti] = sum(bool_up) #得出筛面上颗粒总数
-        try:
-            id_edt = sum(num_ptc>max(num_ptc)*0.02)  #以最后一个大于最大颗粒数2%的时刻为结束时刻
-        except:
-            id_edt = tim_len #如果仿真结束都没筛完，则用最后时刻作为筛分结束时间
-            print('*******there still has a lot of particles!!!**********')
-        print('there still has {} on the deck when time={}'.format(num_ptc[id_edt-1],self.time_ls[id_edt-1]))
-        #注意！！要想取出对应时刻，需要用 times(id_edt-1)
-        # import matplotlib.pyplot as plt
-        # plt.plot(np.arange(tim_len),num_ptc) #画出该实验下 各个时刻时筛面上颗粒数量变化
-        # plt.show()
-        return id_edt-1
+
+        num_up_ptc = np.array([self.getUpperPtc(ti) for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
+        middle = len(num_up_ptc) // 2
+        rest = sum(num_up_ptc[middle:] > (num_up_ptc.max()*0.1) ) #大于 最大颗粒数量的10%的 最后一个时刻
+        time_lb = middle + rest
+        print('there still has {} on the deck when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+
+        return time_lb
 
     def getMainScnEndTime(self):
         #计算筛分结束时刻  1、以筛面上颗粒数量减少率或最大颗粒数量的10%来定；2、以筛分效率稳定时刻来定
         tim_len = len(self.time_ls)
-        num_ptc = np.ones(tim_len) * 1000
-        for ti in range(int(tim_len/2),tim_len):
-        #统计某一时刻  筛面上的颗粒数量 num_ptc
-            # ti = 0 #指定时刻
-            kd = self.calLine(self.scn_tim[ti])
-            ptc = self.ptc_tim[ti]
-            bool_up = (ptc.x < self.main_scn_area) & ((ptc.z - kd[0]*ptc.x - kd[1])>0)
-            num_ptc[ti] = sum(bool_up) #得出筛面上颗粒总数
-        try:
-            id_edt = sum(num_ptc>max(num_ptc)*0.02)  #以最后一个大于最大颗粒数2%的时刻为结束时刻
-        except:
-            id_edt = tim_len #如果仿真结束都没筛完，则用最后时刻作为筛分结束时间
-            print('*******there still has a lot of particles!!!**********')
-        print('there still has {} on the deck when time={}'.format(num_ptc[id_edt-1],self.time_ls[id_edt-1]))
-        #注意！！要想取出对应时刻，需要用 times(id_edt-1)
-        # import matplotlib.pyplot as plt
-        # plt.plot(np.arange(tim_len),num_ptc) #画出该实验下 各个时刻时筛面上颗粒数量变化
-        # plt.show()
-        return id_edt-1
+        x_max = self.main_scn_area
+
+        num_up_ptc = np.array([self.getUpperPtc(ti,x_max) for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
+        middle = len(num_up_ptc) // 2
+        rest = sum(num_up_ptc[middle:] > (num_up_ptc.max()*0.1) ) #大于 最大颗粒数量的10%的 最后一个时刻
+        time_lb = middle + rest
+        print('there still has {} on the main screen area when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+
+        return time_lb
 
     def calZmin(self):
         """ 传入要计算的时刻值即可  计算过筛颗粒的位置
@@ -285,19 +263,22 @@ class DataProcess(object):
         # plt.show()
         return ptc_und
 
-    def getUpperPtc(self,ti):
-        #输入 想要计算的时刻值  返回该时刻下的  筛下颗粒信息 
-        ## 仅仅主筛区域 的 筛上颗粒
+    def getUpperPtc(self, ti, x_max=None):
+        #输入 想要计算的时刻值  返回该时刻下的  筛上颗粒信息 
 
-        x_max = self.main_scn_area
         ptc = self.ptc_tim[ti]
         kb = self.calLine(self.scn_tim[ti])
-        bool_up = (ptc.x < x_max) & ((ptc.z - ptc.x * kb[0]-kb[1]) > 0)
+        
+        if x_max == None:
+            bool_up = ((ptc.z - ptc.x * kb[0]-kb[1]) > 0)
+        else:
+            bool_up = (ptc.x <= x_max) & ((ptc.z - ptc.x * kb[0]-kb[1]) > 0)
+        
         ptc_up = ptc.loc[bool_up]
 
         # ptc_up.plot.scatter('x','z')
         # plt.show()
-        return ptc_up
+        return ptc_up.shape[0]
 
     def calScrEff(self,ti=-1,dim=0.9):  #默认情况下计算最后一刻时刻的筛分效率
         #计算筛分效率  传入要计算的 时刻值
@@ -348,18 +329,10 @@ class DataProcess(object):
         ptc_und = ptc.loc[bool_under]
         num_under_total = sum(bool_under)
 
-        # desc = ptc_und.x.describe(percentiles=[0.8])
-        # x_label = desc['80%']
+        desc = ptc_und.x.describe(percentiles=[0.8])
+        x_label = desc['80%']
+        print('main screen arean:<',x_label)
 
-        deta = 2
-        x_label = self.scn_tim[ti][0]
-        percent = 0
-        while percent<0.8:
-            bool_under_part = ptc_und.x < x_label
-            num_under_part = sum(bool_under_part)
-            percent = num_under_part/num_under_total
-            x_label += deta
-        print('main_scn_area:',x_label)
         return x_label
 
     def getBedPtc(self,ti):
@@ -369,33 +342,42 @@ class DataProcess(object):
         kd = self.calLine(self.scn_tim[ti])
         ptc = self.ptc_tim[ti]
         # bool_up = (ptc_xyz[:,0]>self.x_bod)&(ptc_xyz[:,0]<self.scn_tim[ti][2])&((ptc_xyz[:,2]-(kd[0]*ptc_xyz[:,0]+kd[1]))>0)
+        
         x_label = self.main_scn_area  # x_label左侧认为是主要筛分区域
-        bool_up = (ptc.x <x_label)&((ptc.z -(kd[0]*ptc.x +kd[1]))>0) #不去除料柱
-        num_up = sum(bool_up) #统计此时筛面上有多少颗粒
-        ptc_up = ptc.loc[bool_up]
+        x_bod = self.x_bod ##入料柱位置  以入料柱右侧的主要筛分区域为 判断料层高度的区域
+        
+        bool_up_part = (ptc.x > x_bod) & (ptc.x < x_label) & ((ptc.z -(kd[0]*ptc.x +kd[1]))>0) #去除料柱 0503
+        bool_up_total = (ptc.x < x_label) & ((ptc.z -(kd[0]*ptc.x +kd[1]))>0) #去除料柱 0503
+        ptc_up_part = ptc.loc[bool_up_part]
+        ptc_up_total = ptc.loc[bool_up_total]
 
         #尝试使用坐标转换矩阵
         cm2,cm4,cm5 = self.getConvertMatrix(self.scn_tim[ti])
-        ptc_newup = np.dot(ptc_up,cm5)
-        ptc_newup = pd.DataFrame(ptc_newup,columns = ['pid','x','y','z','mass'])
+        ptc_newup_part = np.dot(ptc_up_part,cm5);print(ptc_newup_part.shape)
+        ptc_newup_total = np.dot(ptc_up_total,cm5);print(ptc_newup_total.shape)
+        ptc_newup_part = pd.DataFrame(ptc_newup_part,columns = ['pid','x','y','z','mass'])
+        ptc_newup_total = pd.DataFrame(ptc_newup_total,columns = ['pid','x','y','z','mass'])
 
         # import matplotlib.pyplot as plt
         # fig = plt.figure()
         # ax = fig.add_subplot(111)
         # ax.plot(ptc_up[:,0],ptc_up[:,2],'.',c='k',alpha=0.3)
-        # ax.plot(ptc_newup[:,0],ptc_newup[:,2],'.',c='r',alpha=0.7)
+        # ax.plot(ptc_newup_part[:,0],ptc_newup_part[:,2],'.',c='r',alpha=0.7)
         # plt.show() #坐标转换后的展示图
 
         # import time
         # time.sleep(5)
 
-        desc = ptc_newup.z.describe(percentiles=[0.05,0.85])
-        bed_top = desc['5%']
-        bed_bottom = desc['85%']
+        ##使用去除料柱的数据计算料层上下界面
+        desc = ptc_newup_part.z.describe(percentiles=[0.05,0.85])
+        bed_top = desc['85%']
+        bed_bottom = desc['5%']
     
-        bool_bed = (ptc_newup.z > bed_bottom)&(ptc_newup.z < bed_top)
-        ptc_bed = ptc_newup[bool_bed]
+        ## 使用没有去除入料柱的数据计算新的料层数据
+        bool_bed = (ptc_newup_total.z > bed_bottom)&(ptc_newup_total.z < bed_top)
+        ptc_bed = ptc_newup_total[bool_bed]
         return ptc_bed, np.array([bed_bottom,bed_top])
+        # return ptc_newup_part, ptc_newup_total
 
     def calDiam(self,mass):
         #传入颗粒质量 返回球形颗粒直径
@@ -406,93 +388,9 @@ class DataProcess(object):
         diam = diam*1000 #将米 转成 毫米
         return diam
 
-def parallel(doc,q):
+path = 'E:\\data\\features_data'
+exp = DataProcess(path,'exp_24.csv')
 
-    path = 'E:\\data_1'
-    exp = DataProcess(path,doc)
-    # idx_ = exp.idx
-    # print(exp)
-    # ptc_,stra_,poro_,pene_ = calFeatures(exp)
-    # ptc_ = calFeatures(exp,q)
-    # idx_,ptc_,stra_,poro_,pene_ = calFeatures(exp)
-    idx_,ptc_,pene_ = calFeatures(exp)
-
-    # q.put(idx_,ptc_,stra_,poro_,pene_)
-    q.put(idx_,ptc_)
-
-def main():
-
-    path1 = 'E:\\experiments_wang\\data_diff_models\\data_17'
-    path2 = 'E:\\experiments_wang\\data_diff_models\\data_49'
-    path3 = 'E:\\experiments_wang\\data_diff_models\\data_28'
-    # path3 = 'E:\\experiments_wang\\lang\\data_8'
-    # path = 'L:\\shiyan-changshi\\1\\data_1'
-    for lb, path in enumerate([path1,path2,path3]):
-
-        # if lb == 2:
-        model_lb = path[-2:]
-        docs = os.listdir(path)
-        # hz = [16,18,20,22,24,20,20,20,20]
-        print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
-        # q = Queue()
-        dic = dict(idx=[],main_scn_ratio=[],ptc_num=[],stra=[],bed_h=[],poro_x=[],
-                    poro_z=[],pene=[],eff=[],unit_eff=[],scr_time=[])
-        
-        # ##使用多线程 
-        # batch = 2 ##指定一次计算几个实验
-        # # for j in range(int(len(docs))//batch):
-        # for i in range(1): #先计算前4个文件 创建4个线程 
-        #     t = td.Thread(target=parallel, args=(docs[i],q))
-        #     t.start()
-        # for _ in range(1):
-        #     t.join()
-
-        # for _ in range(1):
-        #     res = q.get()
-        #     # dic['idx'].append(res[0])
-        #     # dic['ptc_num'].append(res[1])
-        #     # dic['stra'].append(res[2])
-        #     # dic['poro'].append(res[3])
-        #     # dic['pene'].append(res[4])
-        #     print(res,'>>>')
-
-        ## 不使用多线程
-        for d_,doc in enumerate(docs):
-        # doc = docs[0]
-            # if d_ == 4:
-
-            exp = DataProcess(path,doc)
-            print(exp)
-            main_scn_ratio = exp.main_scn_length / exp.scn_len
-            eff = exp.scr_eff
-            scr_time = exp.time_ls[exp.end_time]
-            unit_eff = exp.scr_eff / scr_time
-            
-            idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_ = calFeatures(exp)
-            
-            dic['idx'].append(idx_)
-            dic['main_scn_ratio'].append(main_scn_ratio)
-            dic['scr_time'].append(scr_time)
-            dic['ptc_num'].append(ptc_)
-            dic['stra'].append(stra_)
-            dic['poro_x'].append(poro_x_)
-            dic['poro_z'].append(poro_z_)
-            dic['pene'].append(pene_)
-            dic['bed_h'].append(bed_h_)
-            dic['eff'].append(eff)
-            dic['unit_eff'].append(unit_eff)
-
-            # print(dic)
-
-        df = pd.DataFrame(dic)
-        df.to_excel('Features_0502_'+ model_lb +'.xlsx')
- 
-        # return df
-
-if __name__ == '__main__':
-    main()
-
-
-
+ptc_bed, bed_lb = exp.getBedPtc(100)
 
 
