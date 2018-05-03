@@ -56,8 +56,8 @@ def pickPoints(array):
     return tag_min+1,tag_max+1
 
 def calPeriodValue(array, period=8):
-    period_num = len(array) // period 
-    values = [array[i*(period-1):(i+1)*(period-1)].mean() for i in range(period_num)]
+    period_num = (len(array)-1) // period 
+    values = [array[i*period:(i+1)*period].mean() for i in range(period_num)]
     return np.array(values)
 
 def calPickValue(ptc_array,target_array):
@@ -165,33 +165,36 @@ def func(params):
     ti = params[1]
     bed,z_labels = exp_obj.getBedPtc(ti)
     # print('the number of particles in bed:', bed.shape[0])
-    delta_z = z_labels[1] - z_labels[0]
+    bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
     stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-    poro = Porosity(bed,delta_z,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
 
     # return ptc_bed_num,stra,poro
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    return ti,ptc_bed_num,stra,poro
+    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
     idx_ = exp_obj.idx
     time = exp_obj.time_ls
     len_time = len(time)
-    stra = np.zeros([len_time,1])
-    poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
-    ptc_bed_num = np.zeros([len_time,1])
+    # stra = np.zeros([len_time,1])
+    # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
+    # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
+    # ptc_bed_num = np.zeros([len_time,1])
 
     pool = mp.Pool(8)
     params = [[exp_obj,ti] for ti in range(len_time)]  ##map传入的参数必须是可迭代的，所以把exp_obj与ti组合成可迭代形式
     res = pool.map(func,params)
     print('multicore is done!!')
+    pool.close()  ##关闭进程池！！
+    pool.join()
 
     # print(res,'\n',len(res))
     np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
-    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros']) ## 各个列名称为返回的数据
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # ptc_bed_num = pd_res.ptc_bed_num
     print(pd_res.head())
@@ -199,22 +202,28 @@ def calFeatures(exp_obj):
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
     stra = pd_res.stra[label]
-    poros = pd_res.poros[label]
+    poros_x = pd_res.poros_x[label]
+    poros_z = pd_res.poros_z[label]
+    bed_h = pd_res.bed_h[label]
 
-    poros_period = calPeriodValue(poros)
+    bed_h_period = calPeriodValue(bed_h)
+    poros_x_period = calPeriodValue(poros_x)
+    poros_z_period = calPeriodValue(poros_z)
     stra_period = calPeriodValue(stra)
     pene_period = Penetration(exp_obj)
     ptc_bed_num_period = calPeriodValue(ptc_bed_num)
 
     ptc_,pene_ = calPickValue(ptc_bed_num_period,pene_period)
-    ptc_,stra_ = calPickValue(ptc_bed_num_period,stra_period)
-    ptc_,poro_ = calPickValue(ptc_bed_num_period,poros_period)
+    _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+    _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
+    _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
+    _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
 
     # return idx_,ptc_,pene_
-    return idx_,ptc_,stra_,poro_,pene_
+    return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_
 
 def periodLastLabel(array, period=8):
-    period_num = len(array) // period 
+    period_num = (len(array)-1) // period  ## 缩短目标序列，避免超出index
     labels = [(i+1)*period for i in range(period_num)]
     return np.array(labels)
 
@@ -227,10 +236,10 @@ def Penetration(exp_obj):
     time = exp_obj.time_ls
     labels = periodLastLabel(time)  # 以平动周期对时间序列进行分割 返回最后一个时刻的标号
     # print(labels)
+    # print(time.shape)
+    # print(len(exp_obj.ptc_tim))
     x_max = exp_obj.main_scn_area
     penetration_ratio = np.zeros([len(labels),1])
-    # num_new_ptc = []
-    # num_tim1_up = []
 
     i_ = 0
     for ti_1, ti_2 in zip(labels[0:-1],labels[1:]):  # 用前后两个周期的 最后一个时刻计算
@@ -290,8 +299,8 @@ def getPeriod(freq,array,interval):
 def Porosity(ptc_bed,delta_z,main_scn_length):
     ## 主筛区域 料层内 所有颗粒投影到 x轴上 两两之间 距离的均值 与 主筛区域长度 之比
 
-    # coord = ptc_bed.x  ## 第一次计算 计算x方向上的松散程度 显示出负相关 
-    coord = ptc_bed.z  ## 第二次尝试 计算z方向上的松散程度  使用z轴方向上的距离均值 与 料层厚度之比 
+    coord_x = ptc_bed.x  ## 第一次计算 计算x方向上的松散程度 显示出负相关 
+    coord_z = ptc_bed.z  ## 第二次尝试 计算z方向上的松散程度  使用z轴方向上的距离均值 与 料层厚度之比 
     
     ### 使用 均方根的 方法 会出现负值
     # mat_total = np.dot(coord.values.reshape(-1,1),coord.values.reshape(1,-1)) # (x1)^2 - 2*x1*x2 + (x2)^2 的所有项
@@ -312,19 +321,26 @@ def Porosity(ptc_bed,delta_z,main_scn_length):
     #         mat_dist[i,j] = np.sqrt(temp)
 
     ## 使用 横坐标取差值 之后 再取绝对值
-    mat_ones = np.ones([len(coord),len(coord)])
-    mat_col = coord.values.reshape(-1,1) * mat_ones
-    mat_row = coord.values.reshape(1,-1) * mat_ones
-    mat_sub = mat_col - mat_row  # 所有颗粒的横坐标 两两取差值
-    mat_dist = np.abs(mat_sub) # 对坐标差值 取绝对值
-      
+    mat_ones = np.ones([len(coord_x),len(coord_x)])
+    mat_col_x = coord_x.values.reshape(-1,1) * mat_ones
+    mat_row_x = coord_x.values.reshape(1,-1) * mat_ones
+    mat_sub_x = mat_col_x - mat_row_x  # 所有颗粒的横坐标 两两取差值
+    mat_dist_x = np.abs(mat_sub_x) # 对坐标差值 取绝对值
+    
+    mat_col_z = coord_z.values.reshape(-1,1) * mat_ones
+    mat_row_z = coord_z.values.reshape(1,-1) * mat_ones
+    mat_sub_z = mat_col_z - mat_row_z  # 所有颗粒的横坐标 两两取差值
+    mat_dist_z = np.abs(mat_sub_z) # 对坐标差值 取绝对值
+
     # print(mat_dist[0:5,0:5])
-    num_ele_triangle_mat_dist = ((mat_dist.shape[0]*mat_dist.shape[1] - mat_dist.shape[0])) ## 距离矩阵的上三角\下三角的元素个数
-    dist_mean = mat_dist.sum() / round(num_ele_triangle_mat_dist,3)
-    # poro = dist_mean / main_scn_length  # 使用x轴方向上 颗粒之间的距离均值 与 主筛长 之比 得出：松散程度与综合筛分效率负相关
-    poro = dist_mean / delta_z  ## 尝试使用 z轴方向上，颗粒之间的距离均值 与 料层厚度之比！
+    num_elems = ((mat_dist_x.shape[0]*mat_dist_x.shape[1] - mat_dist_x.shape[0])) ## 距离矩阵的上三角\下三角的元素个数
+    dist_mean_x = mat_dist_x.sum() / num_elems
+    dist_mean_z = mat_dist_z.sum() / num_elems
+    
+    poro_x = dist_mean_x / main_scn_length  # 使用x轴方向上 颗粒之间的距离均值 与 主筛长 之比 得出：松散程度与综合筛分效率负相关
+    poro_z = dist_mean_z / delta_z  ## 尝试使用 z轴方向上，颗粒之间的距离均值 与 料层厚度之比！
     # print(dist_mean,main_scn_length)
-    return poro 
+    return poro_x,poro_z 
 
 def calAllTimePoro(exp_obj):
     # 传入 实验数据  和  该实验所使用的 振动频率

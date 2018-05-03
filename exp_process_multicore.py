@@ -16,6 +16,7 @@ import seaborn as sns
 from queue import Queue
 
 from otherFunc_multicore import *
+np.seterr(divide='ignore',invalid='ignore')
 
 class DataProcess(object):
 
@@ -30,7 +31,7 @@ class DataProcess(object):
         # print('the main screen area is: <%f'%self.main_scn_area)
         # print('the main screen length is: %f'%self.main_scn_length)
         self.scn_len = self.getScreenLen()
-        # self.x_bod = self.getXBod() ##入料柱位置
+        self.x_bod = self.getXBod() ##入料柱位置
         self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
         self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
@@ -175,13 +176,13 @@ class DataProcess(object):
 
     def getXBod(self):
         # 计算料柱的 右侧边缘 x坐标
-        ti = 0 #指定用于计算料柱的时刻
+        ti = 10 #指定用于计算料柱的时刻
         ptc = self.ptc_tim[ti]
 
-        z_lab = ptc.z.iloc[-len(ptc.z)//50]
-        bool_lab = ptc.z > z_lab
-        x_bod = ptc.x.loc[bool_lab].max() + 1 #把该值认为是 料柱的位置
-        # print('x_bod:',x_bod)
+        z_lb = ptc.z.iloc[-len(ptc.z)//50]
+        bool_lb = ptc.z > z_lb
+        x_bod = ptc.x.loc[bool_lb].max() + 1 #把该值认为是 料柱的位置
+        print('x_bod:',x_bod)
         # self.ptcPlot(ti,x_bod)
         return x_bod
 
@@ -347,6 +348,9 @@ class DataProcess(object):
         ptc_und = ptc.loc[bool_under]
         num_under_total = sum(bool_under)
 
+        # desc = ptc_und.x.describe(percentiles=[0.8])
+        # x_label = desc['80%']
+
         deta = 2
         x_label = self.scn_tim[ti][0]
         percent = 0
@@ -355,6 +359,7 @@ class DataProcess(object):
             num_under_part = sum(bool_under_part)
             percent = num_under_part/num_under_total
             x_label += deta
+        print('main_scn_area:',x_label)
         return x_label
 
     def getBedPtc(self,ti):
@@ -384,26 +389,13 @@ class DataProcess(object):
         # import time
         # time.sleep(5)
 
-        #料层颗粒 不要上下的10%颗粒 即 只要中部80%的颗粒
-        deta = 0.01 #z轴方向 z_min 叠加deta 然后布尔求和，找出10% 90%的分界点
-        dz_min = ptc_newup.z.min()
-        prct = 1/num_up #表征所选区域中颗粒占筛上颗粒的百分比
-        z_label = np.empty(2) #存放10% 和 90%的标志位
-        while prct<=0.8:
-            dz_min += deta
-            num_und = sum(ptc_newup.z < dz_min)
-            prct = num_und/num_up
-            if 0.01<prct<=0.05: #调节料层颗粒 占 筛上全部颗粒的 百分比
-                z_label[0] = dz_min
-                # print(prct) #10%位点的迭代过程
-            elif 0.75<prct<=0.8:  #调节料层颗粒 占 筛上全部颗粒的 百分比
-                z_label[1] = dz_min
-                # print(prct) #90%位点的迭代过程
-        bool_bed = (ptc_newup.z > z_label[0])&(ptc_newup.z < z_label[1])
+        desc = ptc_newup.z.describe(percentiles=[0.05,0.85])
+        bed_top = desc['5%']
+        bed_bottom = desc['85%']
+    
+        bool_bed = (ptc_newup.z > bed_bottom)&(ptc_newup.z < bed_top)
         ptc_bed = ptc_newup[bool_bed]
-        # return ptc_bed,z_label #返回料层颗粒 筛面z坐标 料层底面z坐标
-        delta_z = z_label[1] - z_label[0] # 计算料层厚度
-        return ptc_bed, z_label
+        return ptc_bed, np.array([bed_bottom,bed_top])
 
     def calDiam(self,mass):
         #传入颗粒质量 返回球形颗粒直径
@@ -430,67 +422,76 @@ def parallel(doc,q):
 
 def main():
 
-    path1 = 'E:\\experiments_wang\\lang\\data_1'
-    path2 = 'E:\\experiments_wang\\lang\\data_4'
-    path3 = 'E:\\experiments_wang\\lang\\data_8'
+    path1 = 'E:\\experiments_wang\\data_diff_models\\data_17'
+    path2 = 'E:\\experiments_wang\\data_diff_models\\data_49'
+    path3 = 'E:\\experiments_wang\\data_diff_models\\data_28'
+    # path3 = 'E:\\experiments_wang\\lang\\data_8'
     # path = 'L:\\shiyan-changshi\\1\\data_1'
     for lb, path in enumerate([path1,path2,path3]):
 
-        if lb == 2:
-            docs = os.listdir(path)
-            # hz = [16,18,20,22,24,20,20,20,20]
-            print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
-            # q = Queue()
-            dic = dict(idx=[],main_scn_ratio=[],ptc_num=[],stra=[],poro=[],pene=[],eff=[],unit_eff=[])
+        # if lb == 2:
+        model_lb = path[-2:]
+        docs = os.listdir(path)
+        # hz = [16,18,20,22,24,20,20,20,20]
+        print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
+        # q = Queue()
+        dic = dict(idx=[],main_scn_ratio=[],ptc_num=[],stra=[],bed_h=[],poro_x=[],
+                    poro_z=[],pene=[],eff=[],unit_eff=[],scr_time=[])
+        
+        # ##使用多线程 
+        # batch = 2 ##指定一次计算几个实验
+        # # for j in range(int(len(docs))//batch):
+        # for i in range(1): #先计算前4个文件 创建4个线程 
+        #     t = td.Thread(target=parallel, args=(docs[i],q))
+        #     t.start()
+        # for _ in range(1):
+        #     t.join()
+
+        # for _ in range(1):
+        #     res = q.get()
+        #     # dic['idx'].append(res[0])
+        #     # dic['ptc_num'].append(res[1])
+        #     # dic['stra'].append(res[2])
+        #     # dic['poro'].append(res[3])
+        #     # dic['pene'].append(res[4])
+        #     print(res,'>>>')
+
+        ## 不使用多线程
+        for d_,doc in enumerate(docs):
+        # doc = docs[0]
+            # if d_ == 4:
+
+            exp = DataProcess(path,doc)
+            print(exp)
+            main_scn_ratio = exp.main_scn_length / exp.scn_len
+            eff = exp.scr_eff
+            scr_time = exp.time_ls[exp.end_time]
+            unit_eff = exp.scr_eff / scr_time
             
-            # ##使用多线程 
-            # batch = 2 ##指定一次计算几个实验
-            # # for j in range(int(len(docs))//batch):
-            # for i in range(1): #先计算前4个文件 创建4个线程 
-            #     t = td.Thread(target=parallel, args=(docs[i],q))
-            #     t.start()
-            # for _ in range(1):
-            #     t.join()
+            idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_ = calFeatures(exp)
+            
+            dic['idx'].append(idx_)
+            dic['main_scn_ratio'].append(main_scn_ratio)
+            dic['scr_time'].append(scr_time)
+            dic['ptc_num'].append(ptc_)
+            dic['stra'].append(stra_)
+            dic['poro_x'].append(poro_x_)
+            dic['poro_z'].append(poro_z_)
+            dic['pene'].append(pene_)
+            dic['bed_h'].append(bed_h_)
+            dic['eff'].append(eff)
+            dic['unit_eff'].append(unit_eff)
 
-            # for _ in range(1):
-            #     res = q.get()
-            #     # dic['idx'].append(res[0])
-            #     # dic['ptc_num'].append(res[1])
-            #     # dic['stra'].append(res[2])
-            #     # dic['poro'].append(res[3])
-            #     # dic['pene'].append(res[4])
-            #     print(res,'>>>')
+            # print(dic)
 
-            ## 不使用多线程
-            for doc in docs:
-            # doc = docs[0]
-                exp = DataProcess(path,doc)
-                print(exp)
-                main_scn_ratio = exp.main_scn_length / exp.scn_len
-                eff = exp.scr_eff
-                unit_eff = exp.scr_eff / exp.time_ls[exp.end_time]
-                
-                idx_,ptc_,stra_,poro_,pene_ = calFeatures(exp)
-                
-                dic['idx'].append(idx_)
-                dic['main_scn_ratio'].append(main_scn_ratio)
-                dic['ptc_num'].append(ptc_)
-                dic['stra'].append(stra_)
-                dic['poro'].append(poro_)
-                dic['pene'].append(pene_)
-                dic['eff'].append(eff)
-                dic['unit_eff'].append(unit_eff)
-
-                # print(dic)
-
-            df = pd.DataFrame(dic)
-            df.to_excel('Features_0428_'+str(lb)+'.xlsx')
-
+        df = pd.DataFrame(dic)
+        df.to_excel('Features_0502_'+ model_lb +'.xlsx')
+ 
         # return df
 
 if __name__ == '__main__':
     main()
-    # main()
+
 
 
 
