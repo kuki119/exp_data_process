@@ -16,7 +16,6 @@ import seaborn as sns
 from queue import Queue
 
 from otherFunc_multicore import *
-np.seterr(divide='ignore',invalid='ignore')
 
 class DataProcess(object):
 
@@ -32,10 +31,10 @@ class DataProcess(object):
         # print('the main screen length is: %f'%self.main_scn_length)
         self.scn_len = self.getScreenLen()
         self.x_bod = self.getXBod() ##入料柱位置
-        self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
+        # self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
         self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
-        self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
+        # self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
 
         # print('the screening end time index:',self.end_time)
 
@@ -206,6 +205,7 @@ class DataProcess(object):
         # print(p[0])
         a = np.array([[p[0],1],[p[2],1]])
         b = np.array([p[1],p[3]])
+        # print(a,b)
         params = np.linalg.solve(a,b)
         return params
 
@@ -213,26 +213,44 @@ class DataProcess(object):
         #计算筛分结束时刻  1、以筛面上颗粒数量减少率或最大颗粒数量的10%来定；2、以筛分效率稳定时刻来定
         tim_len = len(self.time_ls)
 
-        num_up_ptc = np.array([self.getUpperPtc(ti) for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
+        num_up_ptc = np.array([self.getUpperPtc(ti).shape[0] for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
         middle = len(num_up_ptc) // 2
         rest = sum(num_up_ptc[middle:] > (num_up_ptc.max()*0.1) ) #大于 最大颗粒数量的10%的 最后一个时刻
         time_lb = middle + rest
-        print('there still has {} on the deck when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+        if time_lb < tim_len:
+            print('there still has {} on the deck when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+            return self.time_ls[time_lb]
 
-        return time_lb
+        else:
+            ##最后筛分时长预测问题！！ 4s内没筛完的仿真怎么处理？？
+            print('*********the process of screening is not finished at %f!!!*********'%self.time_ls[time_len - 1])
+            ## 以最近10个时刻点的 数量变化斜率 预计筛完时长
+            time_now = time_len - 1
+            interval_ = 6 * (self.time_ls[11] - self.time_ls[10])
+            finish_ = num_up_ptc.max() * 0.1 #筛完的目标值
+            current_ = num_up_ptc[time_now] #当前颗粒数
+            front_6 = num_up_ptc[time_now - interval_] #当前时刻前推6个时间间隔
+            t_terminal = ((finish_-current_)/(current_ - front_6)) * interval_ + self.time_ls[time_now]
+            print('******the prediction of screening time index: %f******'%t_terminal)
+            return t_terminal
 
     def getMainScnEndTime(self):
         #计算筛分结束时刻  1、以筛面上颗粒数量减少率或最大颗粒数量的10%来定；2、以筛分效率稳定时刻来定
         tim_len = len(self.time_ls)
         x_max = self.main_scn_area
 
-        num_up_ptc = np.array([self.getUpperPtc(ti,x_max) for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
+        num_up_ptc = np.array([self.getUpperPtc(ti,x_max).shape[0] for ti in range(tim_len)]) ##计算每一个时刻对应的筛上颗粒数目
         middle = len(num_up_ptc) // 2
         rest = sum(num_up_ptc[middle:] > (num_up_ptc.max()*0.1) ) #大于 最大颗粒数量的10%的 最后一个时刻
         time_lb = middle + rest
-        print('there still has {} on the main screen area when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+        if time_lb < tim_len:
+            print('there still has {} on the main screen area when time={}'.format(num_up_ptc[time_lb],self.time_ls[time_lb]))
+            return time_lb
 
-        return time_lb
+        else:
+            ##最后筛分时长预测问题！！ 4s内没筛完的仿真怎么处理？？
+            print('*********the process of screening is not finished!!!*********')
+            return tim_len - 1 
 
     def calZmin(self):
         """ 传入要计算的时刻值即可  计算过筛颗粒的位置
@@ -278,7 +296,7 @@ class DataProcess(object):
 
         # ptc_up.plot.scatter('x','z')
         # plt.show()
-        return ptc_up.shape[0]
+        return ptc_up
 
     def calScrEff(self,ti=-1,dim=0.9):  #默认情况下计算最后一刻时刻的筛分效率
         #计算筛分效率  传入要计算的 时刻值
@@ -329,8 +347,8 @@ class DataProcess(object):
         ptc_und = ptc.loc[bool_under]
         num_under_total = sum(bool_under)
 
-        desc = ptc_und.x.describe(percentiles=[0.8])
-        x_label = desc['80%']
+        desc = ptc_und.x.describe(percentiles=[0.9])
+        x_label = desc['90%']
         print('main screen arean:<',x_label)
 
         return x_label
@@ -353,8 +371,8 @@ class DataProcess(object):
 
         #尝试使用坐标转换矩阵
         cm2,cm4,cm5 = self.getConvertMatrix(self.scn_tim[ti])
-        ptc_newup_part = np.dot(ptc_up_part,cm5);print(ptc_newup_part.shape)
-        ptc_newup_total = np.dot(ptc_up_total,cm5);print(ptc_newup_total.shape)
+        ptc_newup_part = np.dot(ptc_up_part,cm5)
+        ptc_newup_total = np.dot(ptc_up_total,cm5)
         ptc_newup_part = pd.DataFrame(ptc_newup_part,columns = ['pid','x','y','z','mass'])
         ptc_newup_total = pd.DataFrame(ptc_newup_total,columns = ['pid','x','y','z','mass'])
 
@@ -388,9 +406,13 @@ class DataProcess(object):
         diam = diam*1000 #将米 转成 毫米
         return diam
 
-path = 'E:\\data\\features_data'
-exp = DataProcess(path,'exp_24.csv')
+def testProgram():
+    ## 用于当前程序检查
+    path = 'E:\\data\\features_data'
+    exp = DataProcess(path,'exp_24.csv')
 
-ptc_bed, bed_lb = exp.getBedPtc(100)
+    ptc_bed, bed_lb = exp.getBedPtc(100)
+    ## 2018/06/29 统计所有时刻 筛下颗粒数量变化
 
-
+if __name__ == '__main__':
+    testProgram()

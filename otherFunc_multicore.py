@@ -48,12 +48,12 @@ def pickPoints(array):
     a2 = array[1:]
     a3 = a1 - a2 ## 相邻两点纵坐标之差 即斜率大小
 
-    slop_max = a3.mean() + 0.5*a3.std() # 设定为斜率的最大值
-    slop_min = a3.mean() - 0.5*a3.std() # 设定为斜率的最小值
+    slop_max = a3.mean() + 0.8*a3.std() # 设定为斜率的最大值
+    slop_min = a3.mean() - 0.8*a3.std() # 设定为斜率的最小值
 
     tag_max = (a3<slop_max).argmin() # 想要的最后一个数据
     tag_min = (a3<slop_min).argmin() # 想要的第一个数据
-    return tag_min+1,tag_max+1
+    return tag_min,tag_max+1
 
 def calPeriodValue(array, period=8):
     period_num = (len(array)-1) // period 
@@ -68,21 +68,21 @@ def calPickValue(ptc_array,target_array):
 def calStratification(ptc_bed,z_label):
     #传入要计算分层系数的 料层颗粒信息 和 料层厚度
     # print('stratification++++++'+str(len(ptc_bed)))
-    std_diam = 0.9
-    std_mass = calMass(std_diam)
+    # std_diam = 0.9
+    # std_mass = calMass(std_diam)
 
-    ##尝试使用在料层中的小颗粒距离顶部的平均距离 与 料层厚度之比
-    sml_ptc = ptc_bed[ptc_bed.mass < std_mass] ##取出料层中的小颗粒
-    dist_top = z_label[1] - sml_ptc.z.mean()
-    deta_z = z_label[1] - z_label[0]
-    stra = dist_top / deta_z
+    # ##尝试使用在料层中的小颗粒距离顶部的平均距离 与 料层厚度之比
+    # sml_ptc = ptc_bed[ptc_bed.mass < std_mass] ##取出料层中的小颗粒
+    # dist_top = z_label[1] - sml_ptc.z.mean()
+    # deta_z = z_label[1] - z_label[0]
+    # stra = dist_top / deta_z
 
-    # if ptc_bed.shape[0] < 2:
-    #     r = np.nan
-    #     return r
+    if ptc_bed.shape[0] < 2:
+        r = np.nan
+        return r
 
-    # ptc_bed['diam'] = calDiam(ptc_bed.mass)
-    # r = ptc_bed.corr().diam.z  # 去除 颗粒空间位置 z 坐标 与 颗粒直径尺寸的 相关系数
+    ptc_bed['diam'] = calDiam(ptc_bed.mass)
+    r = ptc_bed.corr().diam.z  # 去除 颗粒空间位置 z 坐标 与 颗粒直径尺寸的 相关系数
 
     # z = ptc_bed.z #颗粒z轴坐标
     # x = calDiam(ptc_bed.mass) #颗粒粒径
@@ -120,7 +120,8 @@ def calStratification(ptc_bed,z_label):
     # r_new_norm = ptc_bed.corr().diam.z
 
     # return np.array([r_old,r_new,r_new_norm])
-    return stra
+    return r
+    # return stra
 
 def calAllTimeStra(exp_obj):
     # 传入 实验数据  和  该实验所使用的 振动频率
@@ -168,12 +169,13 @@ def func(params):
     bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
-    stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-    poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    # stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+    # poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
 
-    # return ptc_bed_num,stra,poro
+    ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
+    return ti,ptc_bed_num,ptc_und_num
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
+    # return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
@@ -197,7 +199,7 @@ def calFeatures(exp_obj):
     pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # ptc_bed_num = pd_res.ptc_bed_num
-    print(pd_res.head())
+    print(pd_res.tail())
 
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
