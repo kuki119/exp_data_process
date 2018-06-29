@@ -85,7 +85,7 @@ def main():
                 # print(dic)
 
             df = pd.DataFrame(dic)
-            df.to_excel('Features_0629_'+ model_lb +'.xlsx')
+            df.to_excel('..\\features\\Features_0629_'+ model_lb +'.xlsx')
 
 if __name__ == '__main__':
     main()
