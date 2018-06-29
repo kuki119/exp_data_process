@@ -31,7 +31,7 @@ class DataProcess(object):
         # print('the main screen length is: %f'%self.main_scn_length)
         self.scn_len = self.getScreenLen()
         self.x_bod = self.getXBod() ##入料柱位置
-        # self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
+        self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
         self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
         # self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻

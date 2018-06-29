@@ -1,3 +1,5 @@
+import os
+
 from exp_process_multicore import *
 from otherFunc_multicore import *
 np.seterr(divide='ignore',invalid='ignore')
@@ -25,7 +27,7 @@ def main():
     for lb, pa in enumerate(path_child):
         path = os.path.join(path_parent, pa)
 
-        if lb == 2:
+        if lb != -1:
             model_lb = path[-2:]
             docs = os.listdir(path)
             # hz = [16,18,20,22,24,20,20,20,20]
@@ -83,7 +85,7 @@ def main():
                 # print(dic)
 
             df = pd.DataFrame(dic)
-            df.to_excel('Features_0612_'+ model_lb +'.xlsx')
+            df.to_excel('Features_0629_'+ model_lb +'.xlsx')
 
 if __name__ == '__main__':
     main()
