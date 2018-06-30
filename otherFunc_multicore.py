@@ -169,13 +169,13 @@ def func(params):
     bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
-    # stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-    # poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+    poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
 
-    ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
-    return ti,ptc_bed_num,ptc_und_num
+    # ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
+    # return ti,ptc_bed_num,ptc_und_num
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    # return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
+    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
