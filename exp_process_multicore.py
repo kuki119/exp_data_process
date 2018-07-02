@@ -34,7 +34,7 @@ class DataProcess(object):
         self.scr_eff = self.calScrEff(dim=0.9) ; print('efficiency:',self.scr_eff)
 
         self.end_time = self.getEndTime()  # 获取整体筛分结束时刻
-        # self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
+        self.main_scn_end_tim = self.getMainScnEndTime() # 获取主筛区域筛分结束时刻
 
         # print('the screening end time index:',self.end_time)
 
@@ -223,13 +223,13 @@ class DataProcess(object):
 
         else:
             ##最后筛分时长预测问题！！ 4s内没筛完的仿真怎么处理？？
-            print('*********the process of screening is not finished at %f!!!*********'%self.time_ls[time_len - 1])
+            print('*********the process of screening is not finished at %f!!!*********'%self.time_ls[tim_len - 1])
             ## 以最近10个时刻点的 数量变化斜率 预计筛完时长
-            time_now = time_len - 1
+            time_now = tim_len - 1
             interval_ = 6 * (self.time_ls[11] - self.time_ls[10])
             finish_ = num_up_ptc.max() * 0.1 #筛完的目标值
             current_ = num_up_ptc[time_now] #当前颗粒数
-            front_6 = num_up_ptc[time_now - interval_] #当前时刻前推6个时间间隔
+            front_6 = num_up_ptc[time_now - 6] #当前时刻前推6个时间间隔
             t_terminal = ((finish_-current_)/(current_ - front_6)) * interval_ + self.time_ls[time_now]
             print('******the prediction of screening time index: %f******'%t_terminal)
             return t_terminal
