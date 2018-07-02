@@ -169,13 +169,14 @@ def func(params):
     bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
-    stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-    poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    # stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+    # poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    touch_ratio = calTouchScreen(exp_obj, ti)
 
     # ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
-    # return ti,ptc_bed_num,ptc_und_num
+    return ti,ptc_bed_num,touch_ratio
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
+    # return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
@@ -196,33 +197,37 @@ def calFeatures(exp_obj):
 
     # print(res,'\n',len(res))
     np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
-    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h']) ## 各个列名称为返回的数据
+    # pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h']) ## 各个列名称为返回的数据
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # ptc_bed_num = pd_res.ptc_bed_num
     print(pd_res.tail())
 
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
-    stra = pd_res.stra[label]
-    poros_x = pd_res.poros_x[label]
-    poros_z = pd_res.poros_z[label]
-    bed_h = pd_res.bed_h[label]
+    # stra = pd_res.stra[label]
+    # poros_x = pd_res.poros_x[label]
+    # poros_z = pd_res.poros_z[label]
+    # bed_h = pd_res.bed_h[label]
+    touch = pd_res.touch_ratio[label]
 
-    bed_h_period = calPeriodValue(bed_h)
-    poros_x_period = calPeriodValue(poros_x)
-    poros_z_period = calPeriodValue(poros_z)
-    stra_period = calPeriodValue(stra)
-    pene_period = Penetration(exp_obj)
+    # bed_h_period = calPeriodValue(bed_h)
+    # poros_x_period = calPeriodValue(poros_x)
+    # poros_z_period = calPeriodValue(poros_z)
+    # stra_period = calPeriodValue(stra)
+    # pene_period = Penetration(exp_obj)
     ptc_bed_num_period = calPeriodValue(ptc_bed_num)
+    touch_period = calPeriodValue(touch)
 
-    ptc_,pene_ = calPickValue(ptc_bed_num_period,pene_period)
-    _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
-    _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
-    _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
-    _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
+    # ptc_,pene_ = calPickValue(ptc_bed_num_period,pene_period)
+    # _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+    # _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
+    # _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
+    # _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
+    ptc_,bed_h_ = calPickValue(ptc_bed_num_period,touch_period)
 
-    # return idx_,ptc_,pene_
-    return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_
+    return idx_,ptc_,touch_period
+    # return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_
 
 def periodLastLabel(array, period=8):
     period_num = (len(array)-1) // period  ## 缩短目标序列，避免超出index
@@ -280,6 +285,44 @@ def findDiff(array1,array2):
     diff = a.symmetric_difference(b)
     return diff
 
+def calTouchScreen(exp_obj, ti):
+    ##计算某一个时刻下 主筛区域内的 触筛概率
+    ##触筛概率定义： 所有触筛颗粒的最大横截面积之和 与 主筛区域筛网面积 之比
+    ##触筛颗粒： 与筛面距离 <= 自身半径的 所有 颗粒 
+
+    kd = exp_obj.calLine(exp_obj.scn_tim[ti])
+    ptc = exp_obj.ptc_tim[ti]
+
+    x_main = exp_obj.main_scn_area
+    ptc_main = ptc.loc[ptc.x < x_main] ##主筛区域内的所有颗粒
+
+    cm2,cm4,cm5 = exp_obj.getConvertMatrix(kd)
+    ptc_main_conv = np.dot(ptc_main, cm5)
+    ptc_main_conv = pd.DataFrame(ptc_main_conv,columns = ['pid','x','y','z','mass'])
+    ##计算旋转后 筛网位置坐标
+    scn_point1 = np.dot(exp_obj.scn_tim[ti][0:2],cm2)
+    scn_point2 = np.dot(exp_obj.scn_tim[ti][2:],cm2)
+    print(scn_point1, scn_point2)
+    
+    ##1、计算各个颗粒半径
+    ptc_main_conv['radius'] = 0.5 * calDiam(ptc_main_conv.mass)
+    ##2、所有颗粒 z坐标 减去筛网z坐标 即以筛网位置为0基准面
+    ptc_main_conv['new_z'] = ptc_main_conv.z - scn_point1[1]
+    ##3、所有颗粒 z坐标 分别减去自身半径 和 加上自身半径 两次结果相乘 取负值颗粒
+    ptc_main_conv['z_up'] = ptc_main_conv.z + ptc_main_conv.radius
+    ptc_main_conv['z_down'] = ptc_main_conv.z - ptc_main_conv.radius
+    ptc_main_conv['label'] = np.sign(ptc_main_conv.z_up * ptc_main_conv.z_down)
+    ptc_touch_scn = ptc_main_conv[ptc_main_conv.label == -1]
+    if ptc_touch_scn.shape[0] < 2:
+        return 0.0
+    else:
+        ##4、负值颗粒为触筛颗粒，对触筛颗粒最大截面求和 
+        ptc_touch_scn['area'] = ptc_touch_scn.radius.apply(calArea) 
+        touch_ratio = ptc_touch_scn.area.sum() / (30*exp_obj.main_scn_length)
+        return touch_ratio
+    
+def calArea(r):
+    return np.pi * r ** 2
 def getPeriod(freq,array,interval):
     # 输入数据  和 数据循环的频率
     # interval = 0.001

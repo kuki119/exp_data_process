@@ -67,17 +67,19 @@ def main():
                 unit_eff = exp.scr_eff / scr_time
                 main_scr_time = exp.time_ls[exp.main_scn_end_tim]
                 
-                idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_ = calFeatures(exp)
+                # idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_ = calFeatures(exp)
+                idx_,ptc_,touch_ = calFeatures(exp)
                 
                 dic['idx'].append(idx_)
                 dic['main_scn_ratio'].append(main_scn_ratio)
                 dic['scr_time'].append(scr_time)
                 dic['ptc_num'].append(ptc_)
-                dic['stra'].append(stra_)
-                dic['poro_x'].append(poro_x_)
-                dic['poro_z'].append(poro_z_)
-                dic['pene'].append(pene_)
-                dic['bed_h'].append(bed_h_)
+                # dic['stra'].append(stra_)
+                # dic['poro_x'].append(poro_x_)
+                # dic['poro_z'].append(poro_z_)
+                # dic['pene'].append(pene_)
+                # dic['bed_h'].append(bed_h_)
+                dic['touch_r'].append(touch)
                 dic['eff'].append(eff)
                 dic['unit_eff'].append(unit_eff)
                 dic['main_scr_time'].append(main_scr_time)
