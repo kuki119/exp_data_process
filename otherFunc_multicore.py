@@ -188,7 +188,7 @@ def calFeatures(exp_obj):
     # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
     # ptc_bed_num = np.zeros([len_time,1])
 
-    pool = mp.Pool(8)
+    pool = mp.Pool(4)
     params = [[exp_obj,ti] for ti in range(len_time)]  ##map传入的参数必须是可迭代的，所以把exp_obj与ti组合成可迭代形式
     res = pool.map(func,params)
     print('multicore is done!!')
@@ -201,7 +201,7 @@ def calFeatures(exp_obj):
     pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # ptc_bed_num = pd_res.ptc_bed_num
-    print(pd_res.tail())
+    print(pd_res.tail(100))
 
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
@@ -296,13 +296,13 @@ def calTouchScreen(exp_obj, ti):
     x_main = exp_obj.main_scn_area
     ptc_main = ptc.loc[ptc.x < x_main] ##主筛区域内的所有颗粒
 
-    cm2,cm4,cm5 = exp_obj.getConvertMatrix(kd)
+    cm2,cm4,cm5 = exp_obj.getConvertMatrix(exp_obj.scn_tim[ti])
     ptc_main_conv = np.dot(ptc_main, cm5)
     ptc_main_conv = pd.DataFrame(ptc_main_conv,columns = ['pid','x','y','z','mass'])
     ##计算旋转后 筛网位置坐标
     scn_point1 = np.dot(exp_obj.scn_tim[ti][0:2],cm2)
     scn_point2 = np.dot(exp_obj.scn_tim[ti][2:],cm2)
-    print(scn_point1, scn_point2)
+    # print(scn_point1, scn_point2)
     
     ##1、计算各个颗粒半径
     ptc_main_conv['radius'] = 0.5 * calDiam(ptc_main_conv.mass)
@@ -313,16 +313,19 @@ def calTouchScreen(exp_obj, ti):
     ptc_main_conv['z_down'] = ptc_main_conv.z - ptc_main_conv.radius
     ptc_main_conv['label'] = np.sign(ptc_main_conv.z_up * ptc_main_conv.z_down)
     ptc_touch_scn = ptc_main_conv[ptc_main_conv.label == -1]
+    
     if ptc_touch_scn.shape[0] < 2:
         return 0.0
     else:
         ##4、负值颗粒为触筛颗粒，对触筛颗粒最大截面求和 
-        ptc_touch_scn['area'] = ptc_touch_scn.radius.apply(calArea) 
+        ptc_touch_scn['area'] = ptc_touch_scn.radius
+        ptc_touch_scn.area = ptc_touch_scn.area.apply(calArea) 
         touch_ratio = ptc_touch_scn.area.sum() / (30*exp_obj.main_scn_length)
         return touch_ratio
     
 def calArea(r):
     return np.pi * r ** 2
+
 def getPeriod(freq,array,interval):
     # 输入数据  和 数据循环的频率
     # interval = 0.001

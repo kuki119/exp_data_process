@@ -33,8 +33,8 @@ def main():
             # hz = [16,18,20,22,24,20,20,20,20]
             print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
             # q = Queue()
-            dic = dict(idx=[],main_scn_ratio=[],ptc_num=[],stra=[],bed_h=[],poro_x=[],
-                        poro_z=[],pene=[],eff=[],unit_eff=[],scr_time=[],main_scr_time=[])
+            dic = dict(idx=[],eff=[],unit_eff=[],scr_time=[],main_scr_time=[],main_scn_ratio=[],ptc_num=[],
+                stra=[],bed_h=[],poro_x=[],poro_z=[],pene=[])
             
             # ##使用多线程 
             # batch = 2 ##指定一次计算几个实验
