@@ -34,7 +34,7 @@ def main():
             print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
             # q = Queue()
             dic = dict(idx=[],eff=[],unit_eff=[],scr_time=[],main_scr_time=[],main_scn_ratio=[],ptc_num=[],
-                stra=[],bed_h=[],poro_x=[],poro_z=[],pene=[])
+                stra=[],bed_h=[],poro_x=[],poro_z=[],pene=[],touch_r=[])
             
             # ##使用多线程 
             # batch = 2 ##指定一次计算几个实验
@@ -67,19 +67,19 @@ def main():
                 unit_eff = exp.scr_eff / scr_time
                 main_scr_time = exp.time_ls[exp.main_scn_end_tim]
                 
-                # idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_ = calFeatures(exp)
-                idx_,ptc_,touch_ = calFeatures(exp)
+                idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_,touch_ = calFeatures(exp)
+                # idx_,ptc_,touch_ = calFeatures(exp)
                 
                 dic['idx'].append(idx_)
                 dic['main_scn_ratio'].append(main_scn_ratio)
                 dic['scr_time'].append(scr_time)
                 dic['ptc_num'].append(ptc_)
-                # dic['stra'].append(stra_)
-                # dic['poro_x'].append(poro_x_)
-                # dic['poro_z'].append(poro_z_)
-                # dic['pene'].append(pene_)
-                # dic['bed_h'].append(bed_h_)
-                dic['touch_r'].append(touch)
+                dic['stra'].append(stra_)
+                dic['poro_x'].append(poro_x_)
+                dic['poro_z'].append(poro_z_)
+                dic['pene'].append(pene_)
+                dic['bed_h'].append(bed_h_)
+                dic['touch_r'].append(touch_)
                 dic['eff'].append(eff)
                 dic['unit_eff'].append(unit_eff)
                 dic['main_scr_time'].append(main_scr_time)
@@ -87,7 +87,7 @@ def main():
                 # print(dic)
 
             df = pd.DataFrame(dic)
-            df.to_excel('..\\features\\Features_0629_'+ model_lb +'.xlsx')
+            df.to_excel('..\\features\\Features_0702_'+ model_lb +'.xlsx')
 
 if __name__ == '__main__':
     main()

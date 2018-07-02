@@ -169,14 +169,14 @@ def func(params):
     bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
-    # stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
-    # poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
+    stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
+    poro_x,poro_z = Porosity(bed,bed_h,exp_obj.main_scn_length)  # 记录每个时刻下的 料层松散度
     touch_ratio = calTouchScreen(exp_obj, ti)
 
     # ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
-    return ti,ptc_bed_num,touch_ratio
+    # return ti,ptc_bed_num,touch_ratio
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    # return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h
+    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h,touch_ratio
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
@@ -188,7 +188,7 @@ def calFeatures(exp_obj):
     # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
     # ptc_bed_num = np.zeros([len_time,1])
 
-    pool = mp.Pool(4)
+    pool = mp.Pool(6)
     params = [[exp_obj,ti] for ti in range(len_time)]  ##map传入的参数必须是可迭代的，所以把exp_obj与ti组合成可迭代形式
     res = pool.map(func,params)
     print('multicore is done!!')
@@ -197,37 +197,37 @@ def calFeatures(exp_obj):
 
     # print(res,'\n',len(res))
     np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
-    # pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h']) ## 各个列名称为返回的数据
-    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h','touch_ratio']) ## 各个列名称为返回的数据
+    # pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # ptc_bed_num = pd_res.ptc_bed_num
     print(pd_res.tail(100))
 
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
-    # stra = pd_res.stra[label]
-    # poros_x = pd_res.poros_x[label]
-    # poros_z = pd_res.poros_z[label]
-    # bed_h = pd_res.bed_h[label]
+    stra = pd_res.stra[label]
+    poros_x = pd_res.poros_x[label]
+    poros_z = pd_res.poros_z[label]
+    bed_h = pd_res.bed_h[label]
     touch = pd_res.touch_ratio[label]
 
-    # bed_h_period = calPeriodValue(bed_h)
-    # poros_x_period = calPeriodValue(poros_x)
-    # poros_z_period = calPeriodValue(poros_z)
-    # stra_period = calPeriodValue(stra)
-    # pene_period = Penetration(exp_obj)
+    bed_h_period = calPeriodValue(bed_h)
+    poros_x_period = calPeriodValue(poros_x)
+    poros_z_period = calPeriodValue(poros_z)
+    stra_period = calPeriodValue(stra)
+    pene_period = Penetration(exp_obj)
     ptc_bed_num_period = calPeriodValue(ptc_bed_num)
     touch_period = calPeriodValue(touch)
 
-    # ptc_,pene_ = calPickValue(ptc_bed_num_period,pene_period)
-    # _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
-    # _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
-    # _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
-    # _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
-    ptc_,bed_h_ = calPickValue(ptc_bed_num_period,touch_period)
+    _,pene_ = calPickValue(ptc_bed_num_period,pene_period)
+    _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+    _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
+    _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
+    _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
+    ptc_,touch_ = calPickValue(ptc_bed_num_period,touch_period)
 
-    return idx_,ptc_,touch_period
-    # return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_
+    # return idx_,ptc_,touch_
+    return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_,touch_
 
 def periodLastLabel(array, period=8):
     period_num = (len(array)-1) // period  ## 缩短目标序列，避免超出index
