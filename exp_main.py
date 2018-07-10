@@ -33,8 +33,8 @@ def main():
             # hz = [16,18,20,22,24,20,20,20,20]
             print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
             # q = Queue()
-            dic = dict(idx=[],eff=[],unit_eff=[],scr_time=[],main_scr_time=[],main_scn_ratio=[],ptc_num=[],
-                bed_h=[],touch_r=[],stra=[],poro_x=[],poro_z=[],pene=[])
+            dic = dict(idx=[],eff=[],unit_eff=[],scr_time=[],main_scn_ratio=[],ptc_num=[],
+                touch_m=[],touch_v=[],stra_m=[],stra_v=[],poro_x=[],poro_z=[],pene=[])
             
             # ##使用多线程 
             # batch = 2 ##指定一次计算几个实验
@@ -65,24 +65,26 @@ def main():
                 eff = exp.scr_eff
                 scr_time = exp.end_time
                 unit_eff = exp.scr_eff / scr_time
-                main_scr_time = exp.time_ls[exp.main_scn_end_tim]
+                # main_scr_time = exp.time_ls[exp.main_scn_end_tim]
                 
-                idx_,ptc_,bed_h_,touch_,stra_,poro_x_,poro_z_,pene_ = calFeatures(exp)
+                idx_,ptc_,touch_m,touch_v,stra_m,stra_v,poro_x_,poro_z_,pene_ = calFeatures(exp)
                 # idx_,ptc_,touch_ = calFeatures(exp)
                 
                 dic['idx'].append(idx_)
                 dic['main_scn_ratio'].append(main_scn_ratio)
                 dic['scr_time'].append(scr_time)
                 dic['ptc_num'].append(ptc_)
-                dic['stra'].append(stra_)
+                dic['stra_m'].append(stra_m)
+                dic['stra_v'].append(stra_v)
                 dic['poro_x'].append(poro_x_)
                 dic['poro_z'].append(poro_z_)
                 dic['pene'].append(pene_)
-                dic['bed_h'].append(bed_h_)
-                dic['touch_r'].append(touch_)
+                # dic['bed_h'].append(bed_h_)
+                dic['touch_m'].append(touch_m)
+                dic['touch_v'].append(touch_v)
                 dic['eff'].append(eff)
                 dic['unit_eff'].append(unit_eff)
-                dic['main_scr_time'].append(main_scr_time)
+                # dic['main_scr_time'].append(main_scr_time)
 
                 # print(dic)
 

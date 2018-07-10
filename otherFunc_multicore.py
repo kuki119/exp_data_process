@@ -57,9 +57,14 @@ def pickPoints(array):
     tag_min = (a3<slop_min).argmin() # 想要的第一个数据
     return tag_min,tag_max+1
 
-def calPeriodValue(array, period=8):
+def calPeriodMean(array, period=8):
     period_num = (len(array)-1) // period 
     values = [array[i*period:(i+1)*period].mean() for i in range(period_num)]
+    return np.array(values)
+
+def calPeriodVariance(array, period=8):
+    period_num = (len(array)-1) // period 
+    values = [array[i*period:(i+1)*period].var() for i in range(period_num)]
     return np.array(values)
 
 def calPickValue(ptc_array,target_array):
@@ -168,7 +173,7 @@ def func(params):
     ti = params[1]
     bed,z_labels = exp_obj.getBedPtc(ti)
     # print('the number of particles in bed:', bed.shape[0])
-    bed_h = z_labels[1] - z_labels[0]
+    # bed_h = z_labels[1] - z_labels[0]
 
     ptc_bed_num = bed.shape[0]  # 记录料层中 颗粒数量随时间的变化
     stra = calStratification(bed,z_labels)  # 记录每个时刻下的 z坐标与粒径 的相关系数
@@ -178,7 +183,7 @@ def func(params):
     # ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
     # return ti,ptc_bed_num,touch_ratio
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    return ti,ptc_bed_num,bed_h,touch_ratio,stra,poro_x,poro_z
+    return ti,ptc_bed_num,touch_ratio,stra,poro_x,poro_z
 
 def outPutData(df, columns, addr, name):
     ##传入df数据 导出选定列的数据 到指定位置
@@ -206,7 +211,7 @@ def calFeatures(exp_obj):
 
     # print(res,'\n',len(res))
     np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
-    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','bed_h','touch_ratio','stra','poros_x','poros_z']) ## 各个列名称为返回的数据
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio','stra','poros_x','poros_z']) ## 各个列名称为返回的数据
     # pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
     # outPutData(pd_res, ['ti', 'touch_ratio'], '.', exp_obj.name)
@@ -218,26 +223,30 @@ def calFeatures(exp_obj):
     stra = pd_res.stra[label]
     poros_x = pd_res.poros_x[label]
     poros_z = pd_res.poros_z[label]
-    bed_h = pd_res.bed_h[label]
+    # bed_h = pd_res.bed_h[label]
     touch = pd_res.touch_ratio[label]
 
-    bed_h_period = calPeriodValue(bed_h)
-    poros_x_period = calPeriodValue(poros_x)
-    poros_z_period = calPeriodValue(poros_z)
-    stra_period = calPeriodValue(stra)
+    # bed_h_period = calPeriodMean(bed_h)
+    poros_x_period = calPeriodMean(poros_x)
+    poros_z_period = calPeriodMean(poros_z)
+    stra_period_mean = calPeriodMean(stra)
+    stra_period_var = calPeriodVariance(stra)
     pene_period = Penetration(exp_obj)
-    ptc_bed_num_period = calPeriodValue(ptc_bed_num)
-    touch_period = calPeriodValue(touch)
+    ptc_bed_num_period = calPeriodMean(ptc_bed_num)
+    touch_period_mean = calPeriodMean(touch)
+    touch_period_var = calPeriodMean(touch)
 
     _,pene_ = calPickValue(ptc_bed_num_period,pene_period)
-    _,stra_ = calPickValue(ptc_bed_num_period,stra_period)
+    _,stra_m = calPickValue(ptc_bed_num_period,stra_period_mean)
+    _,stra_v = calPickValue(ptc_bed_num_period,stra_period_var)
     _,poro_x_ = calPickValue(ptc_bed_num_period,poros_x_period)
     _,poro_z_ = calPickValue(ptc_bed_num_period,poros_z_period)
-    _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
-    ptc_,touch_ = calPickValue(ptc_bed_num_period,touch_period)
+    # _,bed_h_ = calPickValue(ptc_bed_num_period,bed_h_period)
+    ptc_,touch_m = calPickValue(ptc_bed_num_period,touch_period_mean)
+    ptc_,touch_v = calPickValue(ptc_bed_num_period,touch_period_var)
 
     # return idx_,ptc_,touch_
-    return idx_,ptc_,bed_h_,touch_,stra_,poro_x_,poro_z_,pene_
+    return idx_,ptc_,touch_m,touch_v,stra_m,stra_v,poro_x_,poro_z_,pene_
 
 def periodLastLabel(array, period=8):
     period_num = (len(array)-1) // period  ## 缩短目标序列，避免超出index
