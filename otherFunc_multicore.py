@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import concurrent.futures 
 import multiprocessing as mp
+import os
+import time
 ## 尝试使用多线程计算  ThreadPoolExecutor
 
 def findIdx(doc_name):
@@ -176,19 +178,26 @@ def func(params):
     # ptc_und_num = exp_obj.getUnderPtc(ti).shape[0] ##计算筛下颗粒数量变化，观察稳筛阶段颗粒占比
     # return ti,ptc_bed_num,touch_ratio
     ### 因为多个时刻的数据同时计算，为了后续分辨哪个时刻数据，所以这里返回时刻值
-    return ti,ptc_bed_num,stra,poro_x,poro_z,bed_h,touch_ratio
+    return ti,ptc_bed_num,bed_h,touch_ratio,stra,poro_x,poro_z
+
+def outPutData(df, columns, addr, name):
+    ##传入df数据 导出选定列的数据 到指定位置
+    df_tmp = df[columns].copy()
+    new_name = os.path.join(addr, name) + columns[-1] + '.xlsx'
+    df_tmp.to_excel(new_name, index=False)
+
 
 def calFeatures(exp_obj):
     ## 尝试使用并行计算 同时计算分层和松散
     idx_ = exp_obj.idx
-    time = exp_obj.time_ls
-    len_time = len(time)
+    time_ls = exp_obj.time_ls
+    len_time = len(time_ls)
     # stra = np.zeros([len_time,1])
     # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
     # poros = np.zeros([len_time,1]) # 记录各个时刻下的 松散
     # ptc_bed_num = np.zeros([len_time,1])
 
-    pool = mp.Pool(6)
+    pool = mp.Pool(3)
     params = [[exp_obj,ti] for ti in range(len_time)]  ##map传入的参数必须是可迭代的，所以把exp_obj与ti组合成可迭代形式
     res = pool.map(func,params)
     print('multicore is done!!')
@@ -197,11 +206,12 @@ def calFeatures(exp_obj):
 
     # print(res,'\n',len(res))
     np_res = np.array(res) ##第一列为时刻值，后续列为所计算特征
-    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','stra','poros_x','poros_z','bed_h','touch_ratio']) ## 各个列名称为返回的数据
+    pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','bed_h','touch_ratio','stra','poros_x','poros_z']) ## 各个列名称为返回的数据
     # pd_res = pd.DataFrame(np_res,columns=['ti','ptc_bed_num','touch_ratio']) ## 各个列名称为返回的数据
     pd_res = pd_res.sort_values(by='ti')
+    # outPutData(pd_res, ['ti', 'touch_ratio'], '.', exp_obj.name)
     # ptc_bed_num = pd_res.ptc_bed_num
-    print(pd_res.tail(100))
+    print(pd_res.tail(10))
 
     label = pd_res.ptc_bed_num.nonzero()[0] ## 相关系数数组中 的 非零项  包括 np.nan 由于已经不是np.array数据类型了 更改
     ptc_bed_num = pd_res.ptc_bed_num[label]
@@ -227,7 +237,7 @@ def calFeatures(exp_obj):
     ptc_,touch_ = calPickValue(ptc_bed_num_period,touch_period)
 
     # return idx_,ptc_,touch_
-    return idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_,touch_
+    return idx_,ptc_,bed_h_,touch_,stra_,poro_x_,poro_z_,pene_
 
 def periodLastLabel(array, period=8):
     period_num = (len(array)-1) // period  ## 缩短目标序列，避免超出index
@@ -318,9 +328,10 @@ def calTouchScreen(exp_obj, ti):
         return 0.0
     else:
         ##4、负值颗粒为触筛颗粒，对触筛颗粒最大截面求和 
-        ptc_touch_scn['area'] = ptc_touch_scn.radius
-        ptc_touch_scn.area = ptc_touch_scn.area.apply(calArea) 
-        touch_ratio = ptc_touch_scn.area.sum() / (30*exp_obj.main_scn_length)
+        df_tmp = ptc_touch_scn.copy()
+        # print(type(df_tmp), df_tmp.shape)
+        df_tmp['area'] = df_tmp.radius.apply(calArea)
+        touch_ratio = df_tmp.area.sum() / (30*exp_obj.main_scn_length)
         return touch_ratio
     
 def calArea(r):

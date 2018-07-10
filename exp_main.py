@@ -27,14 +27,14 @@ def main():
     for lb, pa in enumerate(path_child):
         path = os.path.join(path_parent, pa)
 
-        if lb != -1:
+        if lb > -1:
             model_lb = path[-2:]
             docs = os.listdir(path)
             # hz = [16,18,20,22,24,20,20,20,20]
             print('第%d个文件夹，下有%f个文件'%(lb,len(docs)))
             # q = Queue()
             dic = dict(idx=[],eff=[],unit_eff=[],scr_time=[],main_scr_time=[],main_scn_ratio=[],ptc_num=[],
-                stra=[],bed_h=[],poro_x=[],poro_z=[],pene=[],touch_r=[])
+                bed_h=[],touch_r=[],stra=[],poro_x=[],poro_z=[],pene=[])
             
             # ##使用多线程 
             # batch = 2 ##指定一次计算几个实验
@@ -67,7 +67,7 @@ def main():
                 unit_eff = exp.scr_eff / scr_time
                 main_scr_time = exp.time_ls[exp.main_scn_end_tim]
                 
-                idx_,ptc_,stra_,poro_x_,poro_z_,pene_,bed_h_,touch_ = calFeatures(exp)
+                idx_,ptc_,bed_h_,touch_,stra_,poro_x_,poro_z_,pene_ = calFeatures(exp)
                 # idx_,ptc_,touch_ = calFeatures(exp)
                 
                 dic['idx'].append(idx_)
@@ -87,7 +87,7 @@ def main():
                 # print(dic)
 
             df = pd.DataFrame(dic)
-            df.to_excel('..\\features\\Features_0702_'+ model_lb +'.xlsx')
+            df.to_excel('..\\features\\Features_0708_'+ model_lb +'.xlsx')
 
 if __name__ == '__main__':
     main()

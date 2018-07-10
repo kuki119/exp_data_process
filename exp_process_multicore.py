@@ -23,6 +23,7 @@ class DataProcess(object):
         # 传入文件的 所处路径 和 文件名
 
         self.idx = findIdx(doc_name)
+        self.name = doc_name[:-4]
         self.path = os.path.join(file_path,doc_name)
         self.ptc_tim,self.scn_tim,self.time_ls,self.unit = self.inputData() #实现数据的分块 分类
         self.main_scn_area = self.calMainScnArea()
